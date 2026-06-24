@@ -1,6 +1,6 @@
 # Tube Emulator
 
-A starting-point Audio Unit amp simulator voiced after a blackface-era (~'67)
+A starting-point Audio Unit amp simulator voiced after a late-'60s (~'67)
 Fender tube amp: clean headroom that breaks up into a warm, slightly overdriven
 blues tone. Built with [JUCE](https://juce.com) and CMake.
 

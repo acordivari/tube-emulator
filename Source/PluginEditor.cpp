@@ -10,6 +10,7 @@ TubeEmulatorAudioProcessorEditor::TubeEmulatorAudioProcessorEditor (
     setUpKnob (bass,   "bass",   "Bass");
     setUpKnob (mid,    "mid",    "Mid");
     setUpKnob (treble, "treble", "Treble");
+    setUpKnob (sag,    "sag",    "Sag");
     setUpKnob (level,  "level",  "Level");
 
     addAndMakeVisible (loadIRButton);
@@ -55,7 +56,7 @@ TubeEmulatorAudioProcessorEditor::TubeEmulatorAudioProcessorEditor (
     testTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, "testtype", testTypeBox);
 
-    setSize (560, 320);
+    setSize (640, 320);
 }
 
 //==============================================================================
@@ -108,7 +109,7 @@ void TubeEmulatorAudioProcessorEditor::resized()
     area.removeFromBottom (8);
 
     // Lay the six knobs out in a single row.
-    Knob* knobs[] = { &drive, &bias, &bass, &mid, &treble, &level };
+    Knob* knobs[] = { &drive, &bias, &bass, &mid, &treble, &sag, &level };
     const int n = (int) std::size (knobs);
     const int w = area.getWidth() / n;
 

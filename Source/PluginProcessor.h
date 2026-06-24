@@ -84,6 +84,14 @@ private:
     double testPhase { 0.0 };
     juce::Random testRandom;
 
+    // Power-amp sag: an envelope follower (current-draw proxy) drives a "supply
+    // voltage" that droops fast and recovers slowly (the slow recovery = bloom).
+    void  applySag (juce::AudioBuffer<float>& buffer, float depth);
+    float supply        { 1.0f };   // 1 = full B+, lower = drooped
+    float sagEnvelope   { 0.0f };
+    float envAttackCoef { 0.0f }, envReleaseCoef  { 0.0f };
+    float sagDroopCoef  { 0.0f }, sagRecoverCoef  { 0.0f };
+
     double currentSampleRate { 44100.0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TubeEmulatorAudioProcessor)

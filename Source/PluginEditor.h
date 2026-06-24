@@ -28,7 +28,7 @@ private:
 
     TubeEmulatorAudioProcessor& processor;
 
-    Knob drive, bias, bass, mid, treble, level;
+    Knob drive, bias, bass, mid, treble, sag, level;
 
     juce::TextButton loadIRButton { "Load Cabinet IR..." };
     juce::Label      irStatus;

@@ -14,6 +14,7 @@ namespace ParamID
     constexpr auto bass   = "bass";
     constexpr auto mid    = "mid";
     constexpr auto treble = "treble";
+    constexpr auto sag    = "sag";
     constexpr auto level  = "level";
     constexpr auto test     = "test";       // internal test-tone on/off
     constexpr auto testType = "testtype";   // Sine / Saw / Noise
@@ -55,6 +56,9 @@ TubeEmulatorAudioProcessor::createParameterLayout()
     params.push_back (knob (ParamID::bass,   "Bass",   5.0f));
     params.push_back (knob (ParamID::mid,    "Mid",    4.0f));   // < 5 = the scoop
     params.push_back (knob (ParamID::treble, "Treble", 6.0f));
+
+    // Power-amp sag: 0 = stiff (solid-state feel), 10 = loose/spongy (tube rectifier).
+    params.push_back (knob (ParamID::sag, "Sag", 4.0f));
 
     // Output level in dB.
     params.push_back (std::make_unique<AudioParameterFloat>(
@@ -107,6 +111,18 @@ void TubeEmulatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     *cabFilter.state = *Coefs::makeLowPass  (sampleRate, 5000.0f, 0.7071f);
 
     updateToneStack (sampleRate);
+
+    // Sag time constants: one-pole coef for a given time constant in ms.
+    auto coef = [sampleRate] (double ms)
+    {
+        return (float) (1.0 - std::exp (-1.0 / ((ms * 0.001) * sampleRate)));
+    };
+    envAttackCoef  = coef (1.0);    // fast: catch transients (current surge)
+    envReleaseCoef = coef (20.0);   // smooth the rectified waveform
+    sagDroopCoef   = coef (25.0);   // supply sags reasonably quickly
+    sagRecoverCoef = coef (320.0);  // ...but recharges slowly -> bloom
+    supply       = 1.0f;
+    sagEnvelope  = 0.0f;
 }
 
 bool TubeEmulatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -179,6 +195,38 @@ void TubeEmulatorAudioProcessor::renderTestTone (juce::AudioBuffer<float>& buffe
 }
 
 //==============================================================================
+void TubeEmulatorAudioProcessor::applySag (juce::AudioBuffer<float>& buffer, float depth)
+{
+    if (depth <= 0.0f)            // Sag at 0 = stiff supply, nothing to do.
+    {
+        supply = 1.0f;
+        return;
+    }
+
+    constexpr float minSupply = 0.3f;   // never let the rail fully collapse
+    const int n   = buffer.getNumSamples();
+    const int nch = buffer.getNumChannels();
+    auto* L = buffer.getWritePointer (0);
+    auto* R = nch > 1 ? buffer.getWritePointer (1) : nullptr;
+
+    for (int i = 0; i < n; ++i)
+    {
+        // Current draw proxy: envelope of the signal feeding the power stage.
+        float rect = std::abs (L[i]);
+        if (R != nullptr) rect = juce::jmax (rect, std::abs (R[i]));
+        sagEnvelope += (rect - sagEnvelope) * (rect > sagEnvelope ? envAttackCoef
+                                                                  : envReleaseCoef);
+
+        // More draw -> lower target rail voltage. Droop quickly, recover slowly.
+        const float target = juce::jmax (minSupply, 1.0f - depth * sagEnvelope);
+        supply += (target - supply) * (target < supply ? sagDroopCoef : sagRecoverCoef);
+
+        L[i] *= supply;
+        if (R != nullptr) R[i] *= supply;
+    }
+}
+
+//==============================================================================
 void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                                juce::MidiBuffer&)
 {
@@ -200,6 +248,7 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float bias  = apvts.getRawParameterValue (ParamID::bias)->load();
     const float gain  = juce::Decibels::decibelsToGain (
                             apvts.getRawParameterValue (ParamID::level)->load());
+    const float sagDepth = apvts.getRawParameterValue (ParamID::sag)->load() / 10.0f * 0.7f;
 
     juce::dsp::AudioBlock<float> block (buffer);
 
@@ -218,17 +267,23 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // 2) Remove the DC offset the asymmetric clipper added.
     dcBlocker.process (ctx);
 
-    // 3) Tone stack (real 3rd-order Fender network) + makeup for its insertion loss.
+    // 3) Tone stack (real 3rd-order Fender network).
     toneStack.process (ctx);
+
+    // 4) Power-amp sag: dynamic supply droop at the power stage (before makeup,
+    //    where the signal sits at a sane level for the envelope follower).
+    applySag (buffer, sagDepth);
+
+    // 5) Makeup for the tone stack's insertion loss.
     block.multiplyBy (juce::Decibels::decibelsToGain (kToneStackMakeupDb));
 
-    // 4) Cabinet: real IR if the user loaded one, otherwise a speaker-rolloff LPF.
+    // 6) Cabinet: real IR if the user loaded one, otherwise a speaker-rolloff LPF.
     if (irLoaded.load())
         convolution.process (ctx);
     else
         cabFilter.process (ctx);
 
-    // 5) Output level.
+    // 7) Output level.
     block.multiplyBy (gain);
 }
 

@@ -72,6 +72,7 @@ There's also a **Standalone** app under `build/` for quick iteration without a D
 | Bass   | Tone stack low shelf (120 Hz) |
 | Mid    | Tone stack peak (500 Hz); defaults below 5 for the Fender scoop |
 | Treble | Tone stack high shelf (3 kHz) |
+| Sag    | Power-amp supply droop: 0 = stiff (solid-state feel), 10 = loose/spongy. Dynamic — best heard on picking transients |
 | Level  | Output gain (dB) |
 
 Use **Load Cabinet IR...** to load a real speaker impulse response (.wav/.aiff) —
@@ -87,9 +88,12 @@ obvious. Turn it off before recording real input.
 
 1. ~~Real Fender passive tone-stack transfer function.~~ ✅ Done — see
    `Source/ToneStack.h`.
-2. Add **power-amp sag / compression** for pick-dynamic "bloom".
+2. ~~Power-amp sag / compression for pick-dynamic "bloom".~~ ✅ Done — see
+   `applySag()` in `PluginProcessor.cpp` (verify with `tools/sag_check.cpp`).
 3. Add **spring reverb** (convolution of a real tank) and **tremolo** (LFO on
    gain) — 50% of the Fender identity.
 4. A/B your DSP against a **SPICE model** of the real circuit (LiveSPICE).
 5. Smooth parameter changes to remove any zipper noise on fast knob moves; add
    an **audio-taper** mapping for the Bass/Treble knobs to match pot feel.
+6. Couple sag into the clipper headroom (right now it's a post-stage supply
+   droop) so the amp also distorts a touch more as the rail sags.

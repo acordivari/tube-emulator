@@ -78,6 +78,11 @@ Use **Load Cabinet IR...** to load a real speaker impulse response (.wav/.aiff) 
 this is the single biggest upgrade to realism. Search for free Fender 1x12 /
 Deluxe cabinet IRs to test with.
 
+**Test Tone** generates an internal signal (Sine / Saw / Noise at ~110 Hz) that
+runs through the whole chain, so you can audition the amp without a guitar
+plugged in. Saw is the best all-rounder; Noise makes the tone-stack scoop
+obvious. Turn it off before recording real input.
+
 ## Next steps (roadmap)
 
 1. ~~Real Fender passive tone-stack transfer function.~~ ✅ Done — see

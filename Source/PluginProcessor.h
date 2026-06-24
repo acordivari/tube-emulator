@@ -79,6 +79,11 @@ private:
     juce::dsp::Convolution convolution;
     std::atomic<bool>      irLoaded { false };
 
+    // Internal test-tone generator.
+    void   renderTestTone (juce::AudioBuffer<float>& buffer);
+    double testPhase { 0.0 };
+    juce::Random testRandom;
+
     double currentSampleRate { 44100.0 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TubeEmulatorAudioProcessor)

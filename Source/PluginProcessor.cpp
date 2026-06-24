@@ -15,6 +15,8 @@ namespace ParamID
     constexpr auto mid    = "mid";
     constexpr auto treble = "treble";
     constexpr auto level  = "level";
+    constexpr auto test     = "test";       // internal test-tone on/off
+    constexpr auto testType = "testtype";   // Sine / Saw / Noise
 }
 
 //==============================================================================
@@ -58,6 +60,14 @@ TubeEmulatorAudioProcessor::createParameterLayout()
     params.push_back (std::make_unique<AudioParameterFloat>(
         ParameterID { ParamID::level, 1 }, "Level",
         NormalisableRange<float> (-24.0f, 12.0f, 0.1f), 0.0f));
+
+    // Internal test-tone generator (replaces the input so you can audition
+    // the chain without a guitar plugged in).
+    params.push_back (std::make_unique<AudioParameterBool>(
+        ParameterID { ParamID::test, 1 }, "Test Tone", false));
+    params.push_back (std::make_unique<AudioParameterChoice>(
+        ParameterID { ParamID::testType, 1 }, "Test Type",
+        StringArray { "Sine", "Saw", "Noise" }, 1));   // default Saw
 
     return { params.begin(), params.end() };
 }
@@ -137,6 +147,38 @@ void TubeEmulatorAudioProcessor::updateToneStack (double sampleRate)
 }
 
 //==============================================================================
+void TubeEmulatorAudioProcessor::renderTestTone (juce::AudioBuffer<float>& buffer)
+{
+    constexpr float  amplitude = 0.25f;   // moderate so Drive does the pushing
+    constexpr double freqHz    = 110.0;   // ~guitar low A
+
+    const int  type = (int) apvts.getRawParameterValue (ParamID::testType)->load();
+    const int  n    = buffer.getNumSamples();
+    const double inc = freqHz / currentSampleRate;
+
+    auto* out = buffer.getWritePointer (0);
+    for (int i = 0; i < n; ++i)
+    {
+        float s = 0.0f;
+        switch (type)
+        {
+            case 0: s = std::sin ((float) (juce::MathConstants<double>::twoPi * testPhase)); break; // Sine
+            case 1: s = 2.0f * (float) testPhase - 1.0f;                                     break; // Saw
+            default: s = testRandom.nextFloat() * 2.0f - 1.0f;                               break; // Noise
+        }
+
+        out[i] = s * amplitude;
+        testPhase += inc;
+        if (testPhase >= 1.0)
+            testPhase -= 1.0;
+    }
+
+    // Mirror the generated signal to any remaining channels.
+    for (int ch = 1; ch < buffer.getNumChannels(); ++ch)
+        buffer.copyFrom (ch, 0, buffer, 0, 0, n);
+}
+
+//==============================================================================
 void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                                juce::MidiBuffer&)
 {
@@ -144,6 +186,11 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, buffer.getNumSamples());
+
+    // If the test-tone generator is on, overwrite the input so the generated
+    // signal runs through the whole chain just like a guitar would.
+    if (apvts.getRawParameterValue (ParamID::test)->load() > 0.5f)
+        renderTestTone (buffer);
 
     // Refresh tone-stack coefficients from the current knob positions.
     // (Cheap enough per block for a starting point; smooth later if you hear zipper.)

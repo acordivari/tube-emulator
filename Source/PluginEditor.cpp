@@ -38,7 +38,24 @@ TubeEmulatorAudioProcessorEditor::TubeEmulatorAudioProcessorEditor (
     irStatus.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (irStatus);
 
-    setSize (560, 280);
+    // --- test-tone generator controls ---
+    testLabel.setText ("Generator:", juce::dontSendNotification);
+    testLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (testLabel);
+
+    addAndMakeVisible (testButton);
+    testAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        processor.apvts, "test", testButton);
+
+    // Item IDs must match the AudioParameterChoice indices (1-based).
+    testTypeBox.addItem ("Sine",  1);
+    testTypeBox.addItem ("Saw",   2);
+    testTypeBox.addItem ("Noise", 3);
+    addAndMakeVisible (testTypeBox);
+    testTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
+        processor.apvts, "testtype", testTypeBox);
+
+    setSize (560, 320);
 }
 
 //==============================================================================
@@ -73,6 +90,16 @@ void TubeEmulatorAudioProcessorEditor::resized()
     auto area = getLocalBounds().reduced (16);
     area.removeFromTop (28);   // title
 
+    // Bottom-most row: test-tone generator.
+    auto testRow = area.removeFromBottom (28);
+    testLabel.setBounds (testRow.removeFromLeft (70));
+    testButton.setBounds (testRow.removeFromLeft (100));
+    testRow.removeFromLeft (8);
+    testTypeBox.setBounds (testRow.removeFromLeft (110));
+
+    area.removeFromBottom (8);
+
+    // Next row up: cabinet IR.
     auto bottom = area.removeFromBottom (32);
     loadIRButton.setBounds (bottom.removeFromLeft (160));
     bottom.removeFromLeft (8);

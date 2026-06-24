@@ -34,5 +34,12 @@ private:
     juce::Label      irStatus;
     std::unique_ptr<juce::FileChooser> chooser;
 
+    // Internal test-tone generator controls.
+    juce::ToggleButton testButton { "Test Tone" };
+    juce::ComboBox     testTypeBox;
+    juce::Label        testLabel;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   testAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> testTypeAttachment;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TubeEmulatorAudioProcessorEditor)
 };

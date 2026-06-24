@@ -1,5 +1,10 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "ToneStack.h"
+
+// Passive tone stacks have ~10-13 dB of midband insertion loss; this brings the
+// level back into a usable range. Trim further with the Level knob by ear.
+static constexpr float kToneStackMakeupDb = 12.0f;
 
 //==============================================================================
 namespace ParamID
@@ -76,9 +81,12 @@ void TubeEmulatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     oversampling->reset();
 
     dcBlocker.prepare (spec);
-    bassFilter.prepare (spec);
-    midFilter.prepare (spec);
-    trebleFilter.prepare (spec);
+
+    // The tone stack is a 3rd-order filter. Seed its coefficients (7 taps) BEFORE
+    // prepare so the filter allocates 3rd-order state, then update them per block.
+    *toneStack.state = *makeToneStackCoeffs (sampleRate);
+    toneStack.prepare (spec);
+
     cabFilter.prepare (spec);
 
     convolution.prepare (spec);
@@ -100,26 +108,32 @@ bool TubeEmulatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 }
 
 //==============================================================================
+juce::dsp::IIR::Coefficients<float>::Ptr
+TubeEmulatorAudioProcessor::makeToneStackCoeffs (double sampleRate) const
+{
+    // Knobs read 0..10 on the panel; the circuit equations want pot fractions 0..1.
+    // (Real Fender treble/bass pots are audio taper, mid is linear — modelled
+    // linearly here; swap in a taper curve later if you want exact knob feel.)
+    const double t = apvts.getRawParameterValue (ParamID::treble)->load() / 10.0; // treble
+    const double l = apvts.getRawParameterValue (ParamID::bass)->load()   / 10.0; // bass
+    const double m = apvts.getRawParameterValue (ParamID::mid)->load()    / 10.0; // mid
+
+    const auto c = tonestack::computeDigital (sampleRate, t, l, m);
+
+    // JUCE stores IIR coefficients as [b0..bN, a1..aN]; a0 is normalised to 1
+    // (computeDigital already did that), so it is omitted here.
+    auto coeffs = new juce::dsp::IIR::Coefficients<float>();
+    coeffs->coefficients = juce::Array<float> ({
+        (float) c.b[0], (float) c.b[1], (float) c.b[2], (float) c.b[3],
+        (float) c.a[1], (float) c.a[2], (float) c.a[3]
+    });
+    return coeffs;
+}
+
 void TubeEmulatorAudioProcessor::updateToneStack (double sampleRate)
 {
-    // NOTE: this is a voiced approximation of the Fender tone stack, not the real
-    // passive RC network. For circuit-accurate behaviour, port the transfer
-    // function from the Duncan Amps Tone Stack Calculator (Fender topology) into
-    // these coefficients. The knob->dB mapping here is the easy starting point.
-    const float bassKnob   = apvts.getRawParameterValue (ParamID::bass)->load();
-    const float midKnob    = apvts.getRawParameterValue (ParamID::mid)->load();
-    const float trebleKnob = apvts.getRawParameterValue (ParamID::treble)->load();
-
-    const float bassDb   = (bassKnob   - 5.0f) * 2.4f;   // +/-12 dB
-    const float midDb    = (midKnob    - 5.0f) * 2.4f;
-    const float trebleDb = (trebleKnob - 5.0f) * 2.4f;
-
-    *bassFilter.state   = *Coefs::makeLowShelf  (sampleRate, 120.0f,  0.7071f,
-                                                 juce::Decibels::decibelsToGain (bassDb));
-    *midFilter.state    = *Coefs::makePeakFilter (sampleRate, 500.0f, 0.7f,
-                                                 juce::Decibels::decibelsToGain (midDb));
-    *trebleFilter.state = *Coefs::makeHighShelf (sampleRate, 3000.0f, 0.7071f,
-                                                 juce::Decibels::decibelsToGain (trebleDb));
+    // Real 3rd-order Fender ('59 Bassman) tone stack — see ToneStack.h.
+    *toneStack.state = *makeToneStackCoeffs (sampleRate);
 }
 
 //==============================================================================
@@ -157,10 +171,9 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // 2) Remove the DC offset the asymmetric clipper added.
     dcBlocker.process (ctx);
 
-    // 3) Tone stack.
-    bassFilter.process (ctx);
-    midFilter.process (ctx);
-    trebleFilter.process (ctx);
+    // 3) Tone stack (real 3rd-order Fender network) + makeup for its insertion loss.
+    toneStack.process (ctx);
+    block.multiplyBy (juce::Decibels::decibelsToGain (kToneStackMakeupDb));
 
     // 4) Cabinet: real IR if the user loaded one, otherwise a speaker-rolloff LPF.
     if (irLoaded.load())

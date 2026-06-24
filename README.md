@@ -10,13 +10,31 @@ blues tone. Built with [JUCE](https://juce.com) and CMake.
 input drive
   -> 8x-oversampled asymmetric tube clipper   (even-order harmonics = warmth)
   -> DC blocker (20 Hz high-pass)
-  -> Fender-voiced tone stack (Bass / Mid / Treble, mid slightly scooped)
+  -> real 3rd-order Fender ('59 Bassman) tone stack + makeup gain
   -> cabinet: convolution IR if loaded, else a 5 kHz speaker-rolloff low-pass
   -> output level
 ```
 
 The interesting code is `processBlock()` and `tubeShape()` in
-`Source/PluginProcessor.cpp`.
+`Source/PluginProcessor.cpp`, and the tone-stack circuit model in
+`Source/ToneStack.h`.
+
+## Tone stack
+
+`Source/ToneStack.h` implements the actual passive Fender tone-stack circuit:
+the analog transfer function `H(s)` (whose coefficients depend on all three pot
+positions) is discretized with the bilinear transform into a 3rd-order IIR
+filter. The Bass/Mid/Treble knobs therefore interact exactly like the real amp,
+and the famous midrange scoop falls out of the circuit rather than being faked.
+
+Coefficients and component values are from Yeh & Smith, *Discretization of the
+'59 Fender Bassman Tone Stack* (DAFx-06). Verify them offline with:
+
+```sh
+c++ -std=c++17 -O2 tools/tonestack_check.cpp -o /tmp/ts && /tmp/ts
+```
+
+which prints the magnitude response (look for the ~400-700 Hz scoop).
 
 ## Prerequisites
 
@@ -62,11 +80,11 @@ Deluxe cabinet IRs to test with.
 
 ## Next steps (roadmap)
 
-1. Replace the voiced tone stack with the **real Fender passive RC transfer
-   function** (Duncan Amps Tone Stack Calculator) — the knobs become interactive
-   like the real amp.
+1. ~~Real Fender passive tone-stack transfer function.~~ ✅ Done — see
+   `Source/ToneStack.h`.
 2. Add **power-amp sag / compression** for pick-dynamic "bloom".
 3. Add **spring reverb** (convolution of a real tank) and **tremolo** (LFO on
    gain) — 50% of the Fender identity.
 4. A/B your DSP against a **SPICE model** of the real circuit (LiveSPICE).
-5. Smooth parameter changes to remove any zipper noise on fast knob moves.
+5. Smooth parameter changes to remove any zipper noise on fast knob moves; add
+   an **audio-taper** mapping for the Bass/Treble knobs to match pot feel.

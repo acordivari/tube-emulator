@@ -63,6 +63,7 @@ private:
     }
 
     void updateToneStack (double sampleRate);
+    juce::dsp::IIR::Coefficients<float>::Ptr makeToneStackCoeffs (double sampleRate) const;
 
     //==========================================================================
     using Filter = juce::dsp::IIR::Filter<float>;
@@ -72,9 +73,7 @@ private:
     std::unique_ptr<juce::dsp::Oversampling<float>> oversampling;
 
     juce::dsp::ProcessorDuplicator<Filter, Coefs> dcBlocker;   // 20 Hz high-pass
-    juce::dsp::ProcessorDuplicator<Filter, Coefs> bassFilter;  // low shelf
-    juce::dsp::ProcessorDuplicator<Filter, Coefs> midFilter;   // peak (Fender scoop)
-    juce::dsp::ProcessorDuplicator<Filter, Coefs> trebleFilter;// high shelf
+    juce::dsp::ProcessorDuplicator<Filter, Coefs> toneStack;   // 3rd-order Fender stack
     juce::dsp::ProcessorDuplicator<Filter, Coefs> cabFilter;   // speaker rolloff LPF
 
     juce::dsp::Convolution convolution;

@@ -2,9 +2,20 @@
 #include "PluginEditor.h"
 #include "ToneStack.h"
 
-// Passive tone stacks have ~10-13 dB of midband insertion loss; this brings the
-// level back into a usable range. Trim further with the Level knob by ear.
-static constexpr float kToneStackMakeupDb = 12.0f;
+// Passive tone stacks lose ~10-13 dB in the midband, but far less at the band
+// edges, so the broadband peak only needs modest makeup. Keep this conservative
+// so the output soft-clip is a safety net, not the main gain stage.
+static constexpr float kToneStackMakeupDb = 6.0f;
+
+// Band-limited step correction for the sawtooth generator (PolyBLEP). Removes
+// the aliasing that otherwise makes the raw saw sound buzzy/staticky.
+static float polyBlep (float t, float dt)
+{
+    if (dt <= 0.0f) return 0.0f;
+    if (t < dt)            { t /= dt;            return t + t - t * t - 1.0f; }
+    if (t > 1.0f - dt)     { t = (t - 1.0f) / dt; return t * t + t + t + 1.0f; }
+    return 0.0f;
+}
 
 //==============================================================================
 namespace ParamID
@@ -178,9 +189,15 @@ void TubeEmulatorAudioProcessor::renderTestTone (juce::AudioBuffer<float>& buffe
         float s = 0.0f;
         switch (type)
         {
-            case 0: s = std::sin ((float) (juce::MathConstants<double>::twoPi * testPhase)); break; // Sine
-            case 1: s = 2.0f * (float) testPhase - 1.0f;                                     break; // Saw
-            default: s = testRandom.nextFloat() * 2.0f - 1.0f;                               break; // Noise
+            case 0: // Sine
+                s = std::sin ((float) (juce::MathConstants<double>::twoPi * testPhase));
+                break;
+            case 1: // Saw (band-limited via PolyBLEP)
+                s = 2.0f * (float) testPhase - 1.0f - polyBlep ((float) testPhase, (float) inc);
+                break;
+            default: // Noise
+                s = testRandom.nextFloat() * 2.0f - 1.0f;
+                break;
         }
 
         out[i] = s * amplitude;
@@ -285,6 +302,16 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // 7) Output level.
     block.multiplyBy (gain);
+
+    // 8) Output soft clip: gentle output-transformer-style saturation that is
+    //    near-transparent at low level but tames anything pushing past 0 dBFS,
+    //    so the chain can never hand the audio device a harsh digital clip.
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* d = buffer.getWritePointer (ch);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            d[i] = std::tanh (d[i]);
+    }
 }
 
 //==============================================================================

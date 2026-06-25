@@ -26,6 +26,9 @@ namespace ParamID
     constexpr auto mid    = "mid";
     constexpr auto treble = "treble";
     constexpr auto sag    = "sag";
+    constexpr auto reverb    = "reverb";    // spring reverb wet mix
+    constexpr auto tremRate  = "tremrate";  // tremolo LFO rate (Hz)
+    constexpr auto tremDepth = "tremdepth"; // tremolo depth
     constexpr auto level  = "level";
     constexpr auto test     = "test";       // internal test-tone on/off
     constexpr auto testType = "testtype";   // Sine / Saw / Noise
@@ -70,6 +73,13 @@ TubeEmulatorAudioProcessor::createParameterLayout()
 
     // Power-amp sag: 0 = stiff (solid-state feel), 10 = loose/spongy (tube rectifier).
     params.push_back (knob (ParamID::sag, "Sag", 4.0f));
+
+    // Spring reverb (wet mix) and tremolo (LFO rate in Hz + depth).
+    params.push_back (knob (ParamID::reverb, "Reverb", 2.0f));
+    params.push_back (std::make_unique<AudioParameterFloat>(
+        ParameterID { ParamID::tremRate, 1 }, "Trem Rate",
+        NormalisableRange<float> (0.5f, 12.0f, 0.0f, 0.5f), 5.0f));
+    params.push_back (knob (ParamID::tremDepth, "Trem Depth", 0.0f));   // 0 = off
 
     // Output level in dB.
     params.push_back (std::make_unique<AudioParameterFloat>(
@@ -134,6 +144,11 @@ void TubeEmulatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     sagRecoverCoef = coef (320.0);  // ...but recharges slowly -> bloom
     supply       = 1.0f;
     sagEnvelope  = 0.0f;
+
+    // Two slightly different tank lengths give a wider stereo spring.
+    springL.prepare (sampleRate, 0.0371);
+    springR.prepare (sampleRate, 0.0411);
+    tremPhase = 0.0;
 }
 
 bool TubeEmulatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -300,10 +315,45 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     else
         cabFilter.process (ctx);
 
-    // 7) Output level.
+    // 7) Spring reverb (wet mix) + 8) tremolo (LFO amplitude modulation).
+    {
+        const float revMix    = apvts.getRawParameterValue (ParamID::reverb)->load()    / 10.0f;
+        const float tremDepth = apvts.getRawParameterValue (ParamID::tremDepth)->load() / 10.0f;
+        const float tremRate  = apvts.getRawParameterValue (ParamID::tremRate)->load();
+        const double tremInc  = tremRate / currentSampleRate;
+
+        const int n   = buffer.getNumSamples();
+        const int nch = buffer.getNumChannels();
+        auto* L = buffer.getWritePointer (0);
+        auto* R = nch > 1 ? buffer.getWritePointer (1) : nullptr;
+
+        for (int i = 0; i < n; ++i)
+        {
+            if (revMix > 0.0f)   // (1 - mix) * dry + mix * wet
+            {
+                L[i] += revMix * (springL.processSample (L[i]) - L[i]);
+                if (R != nullptr) R[i] += revMix * (springR.processSample (R[i]) - R[i]);
+            }
+
+            if (tremDepth > 0.0f)
+            {
+                const float mod = 0.5f - 0.5f * std::cos (
+                    (float) (juce::MathConstants<double>::twoPi * tremPhase));
+                const float g = 1.0f - tremDepth * mod;
+                L[i] *= g;
+                if (R != nullptr) R[i] *= g;
+            }
+
+            tremPhase += tremInc;       // advance regardless so rate stays steady
+            if (tremPhase >= 1.0)
+                tremPhase -= 1.0;
+        }
+    }
+
+    // 9) Output level.
     block.multiplyBy (gain);
 
-    // 8) Output soft clip: gentle output-transformer-style saturation that is
+    // 10) Output soft clip: gentle output-transformer-style saturation that is
     //    near-transparent at low level but tames anything pushing past 0 dBFS,
     //    so the chain can never hand the audio device a harsh digital clip.
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)

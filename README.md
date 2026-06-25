@@ -12,7 +12,9 @@ input drive
   -> DC blocker (20 Hz high-pass)
   -> real 3rd-order Fender ('59 Bassman) tone stack + makeup gain
   -> cabinet: convolution IR if loaded, else a 5 kHz speaker-rolloff low-pass
-  -> output level
+  -> spring reverb (dispersive allpass cascade in a damped feedback loop)
+  -> tremolo (LFO amplitude modulation)
+  -> output level -> output soft clip
 ```
 
 The interesting code is `processBlock()` and `tubeShape()` in
@@ -73,6 +75,9 @@ There's also a **Standalone** app under `build/` for quick iteration without a D
 | Mid    | Tone stack peak (500 Hz); defaults below 5 for the Fender scoop |
 | Treble | Tone stack high shelf (3 kHz) |
 | Sag    | Power-amp supply droop: 0 = stiff (solid-state feel), 10 = loose/spongy. Dynamic — best heard on picking transients |
+| Reverb | Spring reverb wet mix (0 = dry) |
+| Rate   | Tremolo speed in Hz |
+| Depth  | Tremolo intensity (0 = tremolo off) |
 | Level  | Output gain (dB) |
 
 Use **Load Cabinet IR...** to load a real speaker impulse response (.wav/.aiff) —
@@ -90,8 +95,10 @@ obvious. Turn it off before recording real input.
    `Source/ToneStack.h`.
 2. ~~Power-amp sag / compression for pick-dynamic "bloom".~~ ✅ Done — see
    `applySag()` in `PluginProcessor.cpp` (verify with `tools/sag_check.cpp`).
-3. Add **spring reverb** (convolution of a real tank) and **tremolo** (LFO on
-   gain) — 50% of the Fender identity.
+3. ~~Spring reverb and tremolo.~~ ✅ Done — algorithmic dispersive spring
+   (`Source/SpringReverb.h`, stability-checked by `tools/reverb_check.cpp`) and
+   an LFO tremolo. A convolution IR of a real tank could replace the algorithmic
+   spring later for even more authenticity.
 4. A/B your DSP against a **SPICE model** of the real circuit (LiveSPICE).
 5. Smooth parameter changes to remove any zipper noise on fast knob moves; add
    an **audio-taper** mapping for the Bass/Treble knobs to match pot feel.

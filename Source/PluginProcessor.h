@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "SpringReverb.h"
 
 //==============================================================================
 // Tube Emulator — a starting-point '67-Fender-flavoured amp sim.
@@ -91,6 +92,10 @@ private:
     float sagEnvelope   { 0.0f };
     float envAttackCoef { 0.0f }, envReleaseCoef  { 0.0f };
     float sagDroopCoef  { 0.0f }, sagRecoverCoef  { 0.0f };
+
+    // Spring reverb (one tank per channel, slightly detuned for width) and tremolo.
+    SpringReverb springL, springR;
+    double tremPhase { 0.0 };
 
     double currentSampleRate { 44100.0 };
 

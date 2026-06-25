@@ -12,7 +12,8 @@ input drive
   -> DC blocker (20 Hz high-pass)
   -> real 3rd-order Fender ('59 Bassman) tone stack + makeup gain
   -> cabinet: convolution IR if loaded, else a 5 kHz speaker-rolloff low-pass
-  -> spring reverb (dispersive allpass cascade in a damped feedback loop)
+  -> reverb: convolution with a loaded reverb IR, else the algorithmic spring
+     (dispersive allpass cascade in a damped feedback loop)
   -> tremolo (LFO amplitude modulation)
   -> output level -> output soft clip
 ```
@@ -84,6 +85,10 @@ Use **Load Cabinet IR...** to load a real speaker impulse response (.wav/.aiff) 
 this is the single biggest upgrade to realism. Search for free Fender 1x12 /
 Deluxe cabinet IRs to test with.
 
+Use **Load Reverb IR...** to convolve a real reverb/spring-tank impulse response
+for the wet path instead of the algorithmic spring (the **Reverb** knob still
+sets the wet mix). With no reverb IR loaded it falls back to the built-in spring.
+
 **Test Tone** generates an internal signal (Sine / Saw / Noise at ~110 Hz) that
 runs through the whole chain, so you can audition the amp without a guitar
 plugged in. Saw is the best all-rounder; Noise makes the tone-stack scoop
@@ -96,9 +101,9 @@ obvious. Turn it off before recording real input.
 2. ~~Power-amp sag / compression for pick-dynamic "bloom".~~ ✅ Done — see
    `applySag()` in `PluginProcessor.cpp` (verify with `tools/sag_check.cpp`).
 3. ~~Spring reverb and tremolo.~~ ✅ Done — algorithmic dispersive spring
-   (`Source/SpringReverb.h`, stability-checked by `tools/reverb_check.cpp`) and
-   an LFO tremolo. A convolution IR of a real tank could replace the algorithmic
-   spring later for even more authenticity.
+   (`Source/SpringReverb.h`, stability-checked by `tools/reverb_check.cpp`), an
+   LFO tremolo, and a **Load Reverb IR...** convolution path for using a real
+   tank's impulse response.
 4. A/B your DSP against a **SPICE model** of the real circuit (LiveSPICE).
 5. Smooth parameter changes to remove any zipper noise on fast knob moves; add
    an **audio-taper** mapping for the Bass/Treble knobs to match pot feel.

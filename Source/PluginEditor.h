@@ -34,6 +34,10 @@ private:
     juce::Label      irStatus;
     std::unique_ptr<juce::FileChooser> chooser;
 
+    juce::TextButton loadReverbIRButton { "Load Reverb IR..." };
+    juce::Label      reverbIrStatus;
+    std::unique_ptr<juce::FileChooser> reverbChooser;
+
     // Internal test-tone generator controls.
     juce::ToggleButton testButton { "Test Tone" };
     juce::ComboBox     testTypeBox;

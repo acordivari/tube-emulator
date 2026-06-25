@@ -42,6 +42,32 @@ TubeEmulatorAudioProcessorEditor::TubeEmulatorAudioProcessorEditor (
     irStatus.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (irStatus);
 
+    addAndMakeVisible (loadReverbIRButton);
+    loadReverbIRButton.onClick = [this]
+    {
+        reverbChooser = std::make_unique<juce::FileChooser>(
+            "Choose a reverb impulse response", juce::File{}, "*.wav;*.aiff");
+
+        reverbChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                  | juce::FileBrowserComponent::canSelectFiles,
+            [this] (const juce::FileChooser& fc)
+            {
+                const auto file = fc.getResult();
+                if (file.existsAsFile())
+                {
+                    processor.loadReverbImpulseResponse (file);
+                    reverbIrStatus.setText ("Reverb: " + file.getFileName(),
+                                            juce::dontSendNotification);
+                }
+            });
+    };
+
+    reverbIrStatus.setText (processor.hasReverbImpulseResponse() ? "Reverb: IR loaded"
+                                                                 : "Reverb: algorithmic spring (no IR)",
+                            juce::dontSendNotification);
+    reverbIrStatus.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (reverbIrStatus);
+
     // --- test-tone generator controls ---
     testLabel.setText ("Generator:", juce::dontSendNotification);
     testLabel.setJustificationType (juce::Justification::centredLeft);
@@ -59,7 +85,7 @@ TubeEmulatorAudioProcessorEditor::TubeEmulatorAudioProcessorEditor (
     testTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         processor.apvts, "testtype", testTypeBox);
 
-    setSize (820, 320);
+    setSize (820, 360);
 }
 
 //==============================================================================
@@ -103,6 +129,14 @@ void TubeEmulatorAudioProcessorEditor::resized()
 
     area.removeFromBottom (8);
 
+    // Next row up: reverb IR.
+    auto reverbRow = area.removeFromBottom (32);
+    loadReverbIRButton.setBounds (reverbRow.removeFromLeft (160));
+    reverbRow.removeFromLeft (8);
+    reverbIrStatus.setBounds (reverbRow);
+
+    area.removeFromBottom (8);
+
     // Next row up: cabinet IR.
     auto bottom = area.removeFromBottom (32);
     loadIRButton.setBounds (bottom.removeFromLeft (160));
@@ -111,7 +145,7 @@ void TubeEmulatorAudioProcessorEditor::resized()
 
     area.removeFromBottom (8);
 
-    // Lay the six knobs out in a single row.
+    // Lay the knobs out in a single row.
     Knob* knobs[] = { &drive, &bias, &bass, &mid, &treble, &sag,
                       &reverb, &tremRate, &tremDepth, &level };
     const int n = (int) std::size (knobs);

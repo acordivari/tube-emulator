@@ -48,6 +48,11 @@ public:
     void loadImpulseResponse (const juce::File& irFile);
     bool hasImpulseResponse() const noexcept { return irLoaded; }
 
+    // "Load Reverb IR..." — convolves a real reverb/spring-tank impulse response
+    // for the wet path instead of the algorithmic spring.
+    void loadReverbImpulseResponse (const juce::File& irFile);
+    bool hasReverbImpulseResponse() const noexcept { return reverbIrLoaded; }
+
     juce::AudioProcessorValueTreeState apvts;
 
 private:
@@ -96,6 +101,12 @@ private:
     // Spring reverb (one tank per channel, slightly detuned for width) and tremolo.
     SpringReverb springL, springR;
     double tremPhase { 0.0 };
+
+    // Optional convolution reverb (used instead of the algorithmic spring when an
+    // IR is loaded). reverbScratch holds the wet copy for parallel wet/dry mixing.
+    juce::dsp::Convolution reverbConvolution;
+    std::atomic<bool>      reverbIrLoaded { false };
+    juce::AudioBuffer<float> reverbScratch;
 
     double currentSampleRate { 44100.0 };
 

@@ -149,6 +149,9 @@ void TubeEmulatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     springL.prepare (sampleRate, 0.0371);
     springR.prepare (sampleRate, 0.0411);
     tremPhase = 0.0;
+
+    reverbConvolution.prepare (spec);
+    reverbScratch.setSize ((int) spec.numChannels, samplesPerBlock);
 }
 
 bool TubeEmulatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -315,26 +318,56 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     else
         cabFilter.process (ctx);
 
-    // 7) Spring reverb (wet mix) + 8) tremolo (LFO amplitude modulation).
+    const int n   = buffer.getNumSamples();
+    const int nch = buffer.getNumChannels();
+
+    // 7) Reverb: convolution with a loaded IR if present, else the algorithmic
+    //    spring. Either way, blend (1 - mix) * dry + mix * wet.
+    const float revMix = apvts.getRawParameterValue (ParamID::reverb)->load() / 10.0f;
+    if (revMix > 0.0f)
     {
-        const float revMix    = apvts.getRawParameterValue (ParamID::reverb)->load()    / 10.0f;
-        const float tremDepth = apvts.getRawParameterValue (ParamID::tremDepth)->load() / 10.0f;
-        const float tremRate  = apvts.getRawParameterValue (ParamID::tremRate)->load();
-        const double tremInc  = tremRate / currentSampleRate;
-
-        const int n   = buffer.getNumSamples();
-        const int nch = buffer.getNumChannels();
-        auto* L = buffer.getWritePointer (0);
-        auto* R = nch > 1 ? buffer.getWritePointer (1) : nullptr;
-
-        for (int i = 0; i < n; ++i)
+        if (reverbIrLoaded.load())
         {
-            if (revMix > 0.0f)   // (1 - mix) * dry + mix * wet
+            // Convolve a dry copy so we can mix wet against dry in parallel.
+            for (int ch = 0; ch < nch; ++ch)
+                reverbScratch.copyFrom (ch, 0, buffer, ch, 0, n);
+
+            juce::dsp::AudioBlock<float> wetBlock (reverbScratch.getArrayOfWritePointers(),
+                                                   (size_t) nch, (size_t) n);
+            juce::dsp::ProcessContextReplacing<float> wetCtx (wetBlock);
+            reverbConvolution.process (wetCtx);
+
+            for (int ch = 0; ch < nch; ++ch)
+            {
+                auto* dry = buffer.getWritePointer (ch);
+                const auto* wet = reverbScratch.getReadPointer (ch);
+                for (int i = 0; i < n; ++i)
+                    dry[i] += revMix * (wet[i] - dry[i]);
+            }
+        }
+        else
+        {
+            auto* L = buffer.getWritePointer (0);
+            auto* R = nch > 1 ? buffer.getWritePointer (1) : nullptr;
+            for (int i = 0; i < n; ++i)
             {
                 L[i] += revMix * (springL.processSample (L[i]) - L[i]);
                 if (R != nullptr) R[i] += revMix * (springR.processSample (R[i]) - R[i]);
             }
+        }
+    }
 
+    // 8) Tremolo (LFO amplitude modulation). The phase always advances so the
+    //    rate stays steady even while depth is 0.
+    {
+        const float tremDepth = apvts.getRawParameterValue (ParamID::tremDepth)->load() / 10.0f;
+        const float tremRate  = apvts.getRawParameterValue (ParamID::tremRate)->load();
+        const double tremInc  = tremRate / currentSampleRate;
+
+        auto* L = buffer.getWritePointer (0);
+        auto* R = nch > 1 ? buffer.getWritePointer (1) : nullptr;
+        for (int i = 0; i < n; ++i)
+        {
             if (tremDepth > 0.0f)
             {
                 const float mod = 0.5f - 0.5f * std::cos (
@@ -344,7 +377,7 @@ void TubeEmulatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 if (R != nullptr) R[i] *= g;
             }
 
-            tremPhase += tremInc;       // advance regardless so rate stays steady
+            tremPhase += tremInc;
             if (tremPhase >= 1.0)
                 tremPhase -= 1.0;
         }
@@ -378,6 +411,23 @@ void TubeEmulatorAudioProcessor::loadImpulseResponse (const juce::File& irFile)
         juce::dsp::Convolution::Normalise::yes);
 
     irLoaded.store (true);
+}
+
+//==============================================================================
+void TubeEmulatorAudioProcessor::loadReverbImpulseResponse (const juce::File& irFile)
+{
+    if (! irFile.existsAsFile())
+        return;
+
+    // Reverb tails are long, so don't trim; normalise to keep the wet level sane.
+    reverbConvolution.loadImpulseResponse (
+        irFile,
+        juce::dsp::Convolution::Stereo::yes,
+        juce::dsp::Convolution::Trim::no,
+        0,
+        juce::dsp::Convolution::Normalise::yes);
+
+    reverbIrLoaded.store (true);
 }
 
 //==============================================================================
